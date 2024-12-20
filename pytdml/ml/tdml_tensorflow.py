@@ -29,9 +29,10 @@
 #
 # ------------------------------------------------------------------------------
 import cv2
-import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
+from datalibrary.s3Client import minio_client as client
+import os
 
 import pytdml.utils as utils
 from datalibrary.downloader import *
@@ -42,18 +43,18 @@ def _parse_image(filename):
     Parse a single image file.
     """
     file_content = tf.io.read_file(filename)
-    if filename.endswith('.tif') or filename.endswith('.tiff'):
+    if filename.endswith(".tif") or filename.endswith(".tiff"):
         return tfio.experimental.image.decode_tiff(file_content)
-    elif filename.endswith('.png'):
+    elif filename.endswith(".png"):
         return tf.image.decode_png(file_content)
-    elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
+    elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
         return tf.image.decode_jpeg(file_content)
-    elif filename.endswith('.gif'):
+    elif filename.endswith(".gif"):
         return tf.image.decode_gif(file_content)
-    elif filename.endswith('.bmp'):
+    elif filename.endswith(".bmp"):
         return tf.image.decode_bmp(file_content)
     else:
-        raise ValueError('Unsupported image format: {}'.format(filename))
+        raise ValueError("Unsupported image format: {}".format(filename))
 
 
 def _parse_function_scene(file_image, label):
@@ -83,8 +84,8 @@ def _parse_function_segmentation(file_image, file_label_image, color_to_index):
 
 class TensorflowEOImageSceneTD:
     """
-   TensorFlow Dataset for EO image scene classification training dataset
-   """
+    TensorFlow Dataset for EO image scene classification training dataset
+    """
 
     def __init__(self, td_list, class_map, resize=28):
         self.td_list = td_list
@@ -92,7 +93,6 @@ class TensorflowEOImageSceneTD:
 
     def __len__(self):
         return len(self.td_list)
-
 
     def create_dataset(self):
         """
@@ -112,8 +112,8 @@ class TensorflowEOImageSceneTD:
 
 class TensorflowEOImageObjectTD:
     """
-   TensorFlow Dataset for EO image object detection training dataset
-   """
+    TensorFlow Dataset for EO image object detection training dataset
+    """
 
     def __init__(self, td_list, class_map):
         self.td_list = td_list
@@ -145,8 +145,8 @@ class TensorflowEOImageObjectTD:
 
 class TensorflowEOImageSegmentationTD:
     """
-   TensorFlow Dataset for EO image semantic segmentation training dataset
-   """
+    TensorFlow Dataset for EO image semantic segmentation training dataset
+    """
 
     def __init__(self, td_list, class_map):
         self.td_list = td_list
@@ -167,19 +167,14 @@ class TensorflowEOImageSegmentationTD:
         tf_img_list = tf.constant(img_list)
         tf_label_img_list = tf.constant(label_img_list)
         tf_color_to_index = tf.constant(self.color_to_index)
-        dataset = tf.data.Dataset.from_tensor_slices((tf_img_list, tf_label_img_list, tf_color_to_index))
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (tf_img_list, tf_label_img_list, tf_color_to_index)
+        )
         dataset = dataset.map(_parse_function_segmentation)
         return dataset
 
 
-from datalibrary.s3Client import minio_client as client
-from io import BytesIO
-from PIL import Image
-import os
-
-
 def _read_image(root, sample_url):
-
     file_path = download_scene_data((sample_url, root))
     img = utils.image_open(file_path)
 
@@ -199,7 +194,6 @@ def _process_image(img):
 
 class TensorSceneClassificationDataPipe:
     def __init__(self, tdml, root, class_map):
-
         self.class_map = class_map
         self.root = root
 
@@ -212,7 +206,6 @@ class TensorSceneClassificationDataPipe:
         return imgs, labels
 
     def _process_scene_data(self, sample_url, label):
-
         img = _read_image(self.root, sample_url)
         img = _process_image(img)
 
@@ -235,8 +228,9 @@ class TensorSceneClassificationDataPipe:
             yield img, label
 
     def as_dataset(self, batch_size=32, shuffle=True):
-
-        dataset = tf.data.Dataset.from_generator(self.generator, output_types=(tf.float32, tf.int32))
+        dataset = tf.data.Dataset.from_generator(
+            self.generator, output_types=(tf.float32, tf.int32)
+        )
         # dataset = dataset.map()
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
@@ -245,7 +239,6 @@ class TensorSceneClassificationDataPipe:
 
 class TensorObjectDetectionDataPipe:
     def __init__(self, tdml, root, class_map, crop):
-
         self.td_list = tdml.data
 
         self.root = root
@@ -295,27 +288,35 @@ class TensorObjectDetectionDataPipe:
             img = utils.channel_processing(img)
 
             if self.crop is None:
-                # 下载文件
+                # Download file
                 # transform annotations
-                targets = utils.transform_annotation(labels, self.class_map, img_width, img_height)
+                targets = utils.transform_annotation(
+                    labels, self.class_map, img_width, img_height
+                )
                 yield img, targets
             else:
-
-                crop_object = CropWithTargetImage(*self.crop)  # 补充参数
-                crop_paths, targets = crop_object(img, labels, os.path.dirname(file_path),
-                                         sample_url.split("/")[-1])
+                crop_object = CropWithTargetImage(*self.crop)  # Supplement parameters
+                crop_paths, targets = crop_object(
+                    img, labels, os.path.dirname(file_path), sample_url.split("/")[-1]
+                )
 
                 for index, crop_path in enumerate(crop_paths):
                     img = image_open(crop_path)
                     num_targets = []
                     for target in targets[index]:
                         json_object = {"bbox": target["bbox"], "type": "Feature"}
-                        labels = [ObjectLabel(object=json_object,
-                                              label_class=target["class"],
-                                              bbox_type=target["bboxType"],
-                                              is_negative=target["isNegative"],
-                                              is_difficultly_detectable=target["isDiffDetectable"])]
-                        num_target = utils.get_object_label_data_(labels[0], self.class_map, img_width, img_height)
+                        labels = [
+                            ObjectLabel(
+                                object=json_object,
+                                label_class=target["class"],
+                                bbox_type=target["bboxType"],
+                                is_negative=target["isNegative"],
+                                is_difficultly_detectable=target["isDiffDetectable"],
+                            )
+                        ]
+                        num_target = utils.get_object_label_data_(
+                            labels[0], self.class_map, img_width, img_height
+                        )
                         num_targets.append(num_target)
                     num_targets = np.asarray(num_targets)
 
@@ -332,9 +333,12 @@ class TensorObjectDetectionDataPipe:
         # dataset = dataset.batch(batch_size)
         # dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
         # return dataset
-        ## 方案二
-        dataset = tf.data.Dataset.from_generator(self.generator, output_types=(tf.float32, tf.float32),
-                                                 output_shapes=((None, None, 3), (None, 5)))
+        ## Solution 2
+        dataset = tf.data.Dataset.from_generator(
+            self.generator,
+            output_types=(tf.float32, tf.float32),
+            output_shapes=((None, None, 3), (None, 5)),
+        )
         # dataset = dataset.map()
         # if shuffle:
         #     dataset = dataset.shuffle(buffer_size=len(self.tf_imgs))
@@ -404,13 +408,15 @@ class TensorSemanticSegmentationDataPipe:
             label = utils.regenerate_png_label_(label, self.classes)
 
             if self.crop is None:
-
                 yield img, label
             else:
-
-                crop_object = CropWithImage(*self.crop)  # 补充参数
-                image_crop_paths = crop_object(img, os.path.dirname(image_path), sample_url.split("/")[-1])
-                label_crop_paths = crop_object(label, os.path.dirname(label_path), label_url.split("/")[-1])
+                crop_object = CropWithImage(*self.crop)  # Supplement parameters
+                image_crop_paths = crop_object(
+                    img, os.path.dirname(image_path), sample_url.split("/")[-1]
+                )
+                label_crop_paths = crop_object(
+                    label, os.path.dirname(label_path), label_url.split("/")[-1]
+                )
 
                 for i in range(len(image_crop_paths)):
                     img = image_open(image_crop_paths[i])
@@ -428,7 +434,9 @@ class TensorSemanticSegmentationDataPipe:
         # dataset = dataset.batch(batch_size)
         # dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
         # return dataset
-        dataset = tf.data.Dataset.from_generator(self.generator, output_types=(tf.float32, tf.float32))
+        dataset = tf.data.Dataset.from_generator(
+            self.generator, output_types=(tf.float32, tf.float32)
+        )
         # dataset = dataset.map()
         if shuffle:
             dataset = dataset.shuffle(buffer_size=len(self.tf_imgs))

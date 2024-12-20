@@ -28,37 +28,28 @@
 # SOFTWARE.
 #
 # ------------------------------------------------------------------------------
-import glob
 import json
+import math
+import os
 import pickle
 from abc import ABC
 
-import cv2
 import geojson
 import numpy as np
 import torch
-import io
 from PIL import Image
-import os
-import math
-
-
-import pytdml.utils as utils
-
-from torch.utils.data import Dataset
-
 from torchdata.datapipes.iter import IterDataPipe
 
-from datalibrary import downloader
-from datalibrary.s3Client import minio_client as client
+import pytdml.utils as utils
 from pytdml.type import ObjectLabel
 from pytdml.utils import image_open, save_cache
 from pytdml.tdml_image_crop import CropWithImage, CropWithTargetImage
+from datalibrary import downloader
+from datalibrary.s3Client import minio_client as client
 
 
 class TorchSceneClassificationDataPipe(IterDataPipe, ABC):
     def __init__(self, td_list, root, cache_path, class_map, transform=None):
-
         self.class_map = class_map
 
         self.td_list = td_list
@@ -84,7 +75,9 @@ class TorchSceneClassificationDataPipe(IterDataPipe, ABC):
             for item in iterator:
                 sample_url = item.data_url[0]
 
-                img, file_path = downloader.download_remote_object(self._basedir, sample_url)
+                img, file_path = downloader.download_remote_object(
+                    self._basedir, sample_url
+                )
                 label = self.class_map[item.labels[0].label_class]
                 if self.transform is not None:
                     img = self.transform(img)
@@ -109,7 +102,6 @@ class TorchObjectDetectionDataPipe(IterDataPipe):
 
     def __iter__(self):
         if os.path.exists(self.cache_path):
-
             with open(self.cache_path, "rb") as cache_file:
                 td_list = pickle.load(cache_file)
             iterator = worker_load_process(td_list)
@@ -117,7 +109,9 @@ class TorchObjectDetectionDataPipe(IterDataPipe):
                 img = image_open(item.data_url[0])
                 img_height, img_width, channel = img.shape
                 img = utils.channel_processing(img)
-                targets = utils.target_to_dict(item.labels, self.class_map, img_width, img_height)
+                targets = utils.target_to_dict(
+                    item.labels, self.class_map, img_width, img_height
+                )
                 if self.transform is not None:
                     img, target = self.transform(img, targets)
                 yield img, targets
@@ -127,15 +121,19 @@ class TorchObjectDetectionDataPipe(IterDataPipe):
             for item in iterator:
                 sample_url = item.data_url[0]
 
-                img, file_path = downloader.download_remote_object(self._basedir, sample_url)
+                img, file_path = downloader.download_remote_object(
+                    self._basedir, sample_url
+                )
 
                 img_height, img_width, channel = img.shape
-                #  band processing
+                # band processing
                 img = utils.channel_processing(img)
 
                 if self.crop is None:
                     # transform annotations
-                    targets = utils.target_to_dict(item.labels, self.class_map, img_width, img_height)
+                    targets = utils.target_to_dict(
+                        item.labels, self.class_map, img_width, img_height
+                    )
                     if self.transform is not None:
                         img, targets = self.transform(img, targets)
                     item.data_url = [file_path]
@@ -143,25 +141,32 @@ class TorchObjectDetectionDataPipe(IterDataPipe):
                     yield img, targets
 
                 else:
-
                     crop_object = CropWithTargetImage(*self.crop)
-                    crop_paths, targets = crop_object(img, item.labels, os.path.dirname(file_path),
-                                                      sample_url.split("/")[-1])
+                    crop_paths, targets = crop_object(
+                        img,
+                        item.labels,
+                        os.path.dirname(file_path),
+                        sample_url.split("/")[-1],
+                    )
 
                     for crop_path, target_ in zip(crop_paths, targets):
                         img = image_open(crop_path)
                         img = utils.channel_processing(img)
                         labels = []
                         for target in target_:
-
                             json_object = {"bbox": target["bbox"], "type": "Feature"}
 
-                            labels.append(ObjectLabel(object=geojson.loads(json.dumps(json_object)),
-                                                      label_class=target["class"],
-                                                      bbox_type=target["bboxType"],
-                                                      is_negative=target["isNegative"],
-                                                      ))
-                        target_dict = utils.target_to_dict(labels, self.class_map, img_width, img_height)
+                            labels.append(
+                                ObjectLabel(
+                                    object=geojson.loads(json.dumps(json_object)),
+                                    label_class=target["class"],
+                                    bbox_type=target["bboxType"],
+                                    is_negative=target["isNegative"],
+                                )
+                            )
+                        target_dict = utils.target_to_dict(
+                            labels, self.class_map, img_width, img_height
+                        )
                         if self.transform is not None:
                             img, targets = self.transform(img, target_dict)
                         item.data_url = [file_path]
@@ -172,8 +177,9 @@ class TorchObjectDetectionDataPipe(IterDataPipe):
 
 
 class TorchSemanticSegmentationDataPipe(IterDataPipe, ABC):
-
-    def __init__(self, td_list, root, cache_path, class_list=None, crop=None, transform=None):
+    def __init__(
+        self, td_list, root, cache_path, class_list=None, crop=None, transform=None
+    ):
         super().__init__()
 
         self.class_list = class_list
@@ -203,13 +209,16 @@ class TorchSemanticSegmentationDataPipe(IterDataPipe, ABC):
             iterator = worker_load_process(self.td_list)
 
             for item in iterator:
-
                 sample_url = item.data_url[0]
 
                 label_url = item.labels[0].image_url
-                img, image_path = downloader.download_remote_object(self._basedir, sample_url)
+                img, image_path = downloader.download_remote_object(
+                    self._basedir, sample_url
+                )
                 img = utils.channel_processing(img)
-                label, label_path = downloader.download_remote_object(self._basedir, label_url)
+                label, label_path = downloader.download_remote_object(
+                    self._basedir, label_url
+                )
                 label = utils.regenerate_png_label_(label, self.class_list)
 
                 if self.crop is None:
@@ -221,10 +230,13 @@ class TorchSemanticSegmentationDataPipe(IterDataPipe, ABC):
                     self._cache_file_list.append(item)
                     yield img, label.squeeze(1)
                 else:
-
-                    crop_object = CropWithImage(*self.crop)  # 补充参数
-                    image_crop_paths = crop_object(img, os.path.dirname(image_path), sample_url.split("/")[-1])
-                    label_crop_paths = crop_object(label, os.path.dirname(label_path), label_url.split("/")[-1])
+                    crop_object = CropWithImage(*self.crop)  # Supplement parameters
+                    image_crop_paths = crop_object(
+                        img, os.path.dirname(image_path), sample_url.split("/")[-1]
+                    )
+                    label_crop_paths = crop_object(
+                        label, os.path.dirname(label_path), label_url.split("/")[-1]
+                    )
 
                     for i in range(len(image_crop_paths)):
                         img = image_open(image_crop_paths[i])
@@ -241,7 +253,6 @@ class TorchSemanticSegmentationDataPipe(IterDataPipe, ABC):
 
 
 class TorchChangeDetectionDataPipe(IterDataPipe, ABC):
-
     def __init__(self, td_list, root, cache_path, crop=None, transform=None):
         super().__init__()
 
@@ -270,15 +281,20 @@ class TorchChangeDetectionDataPipe(IterDataPipe, ABC):
 
                 yield bef_img, af_img, label
         else:
-
             iterator = worker_load_process(self.td_list)
 
             for item in iterator:
                 data_url = item.data_url
                 label_url = item.labels[0].image_url
-                before_img, before_img_path = downloader.download_remote_object(self._basedir, data_url[0])
-                after_img, after_img_path = downloader.download_remote_object(self._basedir, data_url[1])
-                label, label_path = downloader.download_remote_object(self._basedir, label_url)
+                before_img, before_img_path = downloader.download_remote_object(
+                    self._basedir, data_url[0]
+                )
+                after_img, after_img_path = downloader.download_remote_object(
+                    self._basedir, data_url[1]
+                )
+                label, label_path = downloader.download_remote_object(
+                    self._basedir, label_url
+                )
 
                 if self.crop is None:
                     if self.transform is not None:
@@ -293,12 +309,20 @@ class TorchChangeDetectionDataPipe(IterDataPipe, ABC):
                     after_img = image_open(after_img_path)
                     label = image_open(label_path)
 
-                    crop_object = CropWithImage(*self.crop)  # 补充参数
-                    before_image_crop_paths = crop_object(before_img, os.path.dirname(before_img_path),
-                                                          data_url[0].split("/")[-1])
-                    after_image_crop_paths = crop_object(after_img, os.path.dirname(after_img_path),
-                                                          data_url[1].split("/")[-1])
-                    label_crop_paths = crop_object(label, os.path.dirname(label_path), label_url.split("/")[-1])
+                    crop_object = CropWithImage(*self.crop)  # Supplement parameters
+                    before_image_crop_paths = crop_object(
+                        before_img,
+                        os.path.dirname(before_img_path),
+                        data_url[0].split("/")[-1],
+                    )
+                    after_image_crop_paths = crop_object(
+                        after_img,
+                        os.path.dirname(after_img_path),
+                        data_url[1].split("/")[-1],
+                    )
+                    label_crop_paths = crop_object(
+                        label, os.path.dirname(label_path), label_url.split("/")[-1]
+                    )
                     for i in range(len(before_image_crop_paths)):
                         before_img = image_open(before_image_crop_paths[i])
                         after_img = image_open(after_image_crop_paths[i])
@@ -315,7 +339,6 @@ class TorchChangeDetectionDataPipe(IterDataPipe, ABC):
 
 
 class TorchStereoDataPipe(IterDataPipe, ABC):
-
     def __init__(self, td_list, root, transform=None):
         super().__init__()
 
@@ -339,13 +362,14 @@ class TorchStereoDataPipe(IterDataPipe, ABC):
                     img = self.transform(img)
                 samples.append(img)
 
-            label, label_path = downloader.download_remote_object(self._basedir, item.labels[0].image_url)
+            label, label_path = downloader.download_remote_object(
+                self._basedir, item.labels[0].image_url
+            )
 
             yield samples, label
 
 
 class Torch3DModelConstructionDataPipe(IterDataPipe):
-
     def __init__(self, td_list, root, transform=None):
         super().__init__()
 
@@ -392,10 +416,12 @@ class Torch3DModelConstructionDataPipe(IterDataPipe):
 
             cam = np.load(self.cams[item])
             depth = np.load(self.depths[item])
-            image_list = self.images[item]  # 对于每个样本，使用不同的视角图像，即取模操作
+            image_list = self.images[
+                item
+            ]  # For each sample, use different view images, i.e., modulo operation
             images = [Image.open(i).convert("RGB") for i in image_list]
             if self.transform is not None:
-                # 如果定义了transform，就对图像进行处理
+                # If transform is defined, process the images
                 images = [self.transform(image) for image in images]
             yield cam, depth, images
 
@@ -413,6 +439,3 @@ def worker_load_process(td_list):
         iter_end = min(iter_start + per_worker, len(td_list))
         iterator = td_list[iter_start:iter_end]
     return iterator
-
-
-

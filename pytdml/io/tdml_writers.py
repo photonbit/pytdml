@@ -32,14 +32,16 @@
 import json
 from typing import Union
 
-from pytdml.io import read_from_json
 from pytdml.type import TrainingDataset, EOTrainingDataset
 
 
-def write_to_json(td: TrainingDataset or EOTrainingDataset, file_path: str, indent: Union[int, str] = 4):
+def write_to_json(
+    td: TrainingDataset or EOTrainingDataset,
+    file_path: str,
+    indent: Union[int, str] = 4,
+):
     """
     Writes a TrainingDataset to a JSON file.
     """
-    with open(file_path, "w", encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(td.to_dict(), f, indent=indent, ensure_ascii=False)
-        # json.dump(remove_empty(td.dict()), f, indent=indent, ensure_ascii=False)

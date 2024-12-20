@@ -145,12 +145,6 @@ class TorchSceneClassificationTD(VisionDataset):
         self.class_map = class_map
 
     def _load_img_label(self):
-        # self.imgs = [utils.generate_file_path(self._basedir, self.root) for item in self.td_list]
-        # imgs = [os.path.join(self._basedir, "EOTrainingDataset", self.tdml.name, class_name, file)
-        #         for class_name in self.tdml.classes
-        #         for file in os.listdir(os.path.join(self._basedir, "EOTrainingDataset", self.tdml.name, class_name))]
-        # imgs = [os.path.join(self._basedir, "EOTrainingDataset", *utils.object_path_parse_(item.data_url))
-        #         for item in self.td_list]
         imgs = [item.data_url[0] for item in self.td_list]
         labels = [item.labels[0].label_class for item in self.td_list]
         return imgs, labels
@@ -159,7 +153,6 @@ class TorchSceneClassificationTD(VisionDataset):
         return len(self.td_list)
 
     def __getitem__(self, item):
-
         img_path = self.imgs[item]
         if img_path.startswith(BUCKET.SC):
             img_path = utils.generate_local_file_path(self.root, img_path)
@@ -195,7 +188,6 @@ class TorchObjectDetectionTD(VisionDataset):
         return len(self.td_data_list)
 
     def __getitem__(self, index):
-
         img = utils.image_open(self.images[index])
 
         img_height, img_width, channel = img.shape
@@ -226,53 +218,29 @@ class TorchSemanticSegmentationTD(VisionDataset):
         return len(self.td_data_list)
 
     def _load_data(self, td_list):
-        """
-        """
+        """ """
         return td_list
 
     def _load_img_label(self, td_list):
-
-        # for item in td_list:
-        #     img_path = utils.generate_file_path(self._basedir, item.data_url)
-        #     img_paths.append(img_path)
-        #
-        #     label_path = item.labels[0].image_url
-        #     label_path = utils.generate_file_path(self._basedir, label_path)
-        #     label_paths.append(label_path)
         img_paths = []
         label_paths = []
         for item in td_list:
-            # if utils.check_object_path(item.data_url[0]) and utils.check_object_path(item.labels[0].image_url):
-            #     label_paths.append(os.path.join(self._basedir, "EOTrainingDataset",
-            #                                     *utils.object_path_parse_(item.labels[0].image_url)))
-            #     img_paths.append(os.path.join(self._basedir, "EOTrainingDataset",
-            #                                   *utils.object_path_parse_(item.data_url)))
-            # else:
-            #     img_paths.append(item.data_url[0])
-            #     label_paths.append(item.labels[0].image_url)
             img_paths.append(item.data_url[0])
             label_paths.append(item.labels[0].image_url)
         return img_paths, label_paths
 
     def __getitem__(self, item):
         if self._imgs[item].startswith(BUCKET.LC):
-            self._imgs[item] = utils.generate_local_file_path(self.root, self._imgs[item])
+            self._imgs[item] = utils.generate_local_file_path(
+                self.root, self._imgs[item]
+            )
         image = utils.image_open(self._imgs[item])
-
-        # image = torch.from_numpy(image).float().contiguous()
 
         label = utils.image_open(self._labels[item])
 
         # scheme 2
         if self.class_list is not None:
             label = utils.regenerate_png_label_(label, self.class_list)
-        # label = torch.from_numpy(label).long().squeeze()
-
-        # label = np.array(label)
-
-        #
-        # label = torch.from_numpy(label).long()
-        # label = label.squeeze()
 
         if self.transform is not None:
             image = self.transform(image)
@@ -300,13 +268,6 @@ class TorchChangeDetectionTD(VisionDataset):
         for item in self.td_list:
             data_url = item.data_url
             label_url = item.labels[0].image_url
-            # if utils.check_object_path(data_url[0]):
-            #     before_img_path = utils.generate_local_file_path(self._basedir, data_url[0])
-            #     after_img_path = utils.generate_local_file_path(self._basedir, data_url[1])
-            #     label_path = utils.generate_local_file_path(self._basedir, label_url)
-            #     sample.append([before_img_path, after_img_path, label_path])
-            # else:
-            #     sample.append([data_url[0], data_url[1], label_url])
             sample.append([data_url[0], data_url[1], label_url])
 
         return sample
@@ -318,10 +279,6 @@ class TorchChangeDetectionTD(VisionDataset):
         before_img = utils.channel_processing(before_img)
         after_img = utils.channel_processing(after_img)
         label = utils.image_open(label_path)
-        # label = np.array(label)
-
-        # label = torch.from_numpy(label).long()
-        # label = label.squeeze()
 
         if self.transform is not None:
             before_img = self.transform(before_img)
@@ -337,10 +294,11 @@ class TorchStereoTD(VisionDataset):
 
         self.td_list = td_list
         self.transform = transform
-        self.target_imgs, self.ref_imgs, self.disp_imgs = self._load_data()  # 加载相机参数
+        self.target_imgs, self.ref_imgs, self.disp_imgs = (
+            self._load_data()
+        )  # 加载相机参数
 
     def _load_data(self):
-
         target_imgs = [item.data_url[0] for item in self.td_list]
         ref_imgs = [item.data_url[1] for item in self.td_list]
         disp_imgs = [item.labels[0].image_url for item in self.td_list]
@@ -365,7 +323,7 @@ class Torch3DModelReconstructionTD(VisionDataset):
     def __init__(self, tdml, root, transform=None):
         super().__init__(root)
         self.root = root
-        self.cams, self.depths, self.images = self._load_data()   # 加载相机参数
+        self.cams, self.depths, self.images = self._load_data()  # 加载相机参数
         self.tdml = tdml
         self.transform = transform
 
@@ -383,7 +341,6 @@ class Torch3DModelReconstructionTD(VisionDataset):
         return cams, depths, imgs
 
     def __len__(self):
-
         return len(self.tdml.data)
 
     def __getitem__(self, item):
@@ -403,15 +360,19 @@ class Torch3DModelReconstructionTD(VisionDataset):
 
 
 def base_transform(image, size, mean, std):
-    x = cv2.resize(image, (size[0], size[1]), interpolation=cv2.INTER_AREA).astype(np.float32)
-    x /= 255.
+    x = cv2.resize(image, (size[0], size[1]), interpolation=cv2.INTER_AREA).astype(
+        np.float32
+    )
+    x /= 255.0
     x -= mean
     x /= std
     return x
 
 
 class BaseTransform:
-    def __init__(self, size=None, mean=(0.406, 0.456, 0.485), std=(0.225, 0.224, 0.229)):
+    def __init__(
+        self, size=None, mean=(0.406, 0.456, 0.485), std=(0.225, 0.224, 0.229)
+    ):
         if size is None:
             size = [256, 256]
         self.size = size

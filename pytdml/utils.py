@@ -28,24 +28,23 @@
 # SOFTWARE.
 #
 # ------------------------------------------------------------------------------
-import pickle
-from typing import Iterable
-import json
 import os
-import urllib3
-from PIL import Image
-from rasterio import RasterioIOError
-
-Image.MAX_IMAGE_PIXELS = 10_000_000_000  # 10 billion
+import re
+import json
+import pickle
+from io import BytesIO
+from threading import Lock
+from typing import Iterable
 
 import numpy as np
-from io import BytesIO
-import re
 import torch
+import urllib3
+from PIL import Image
 from minio import S3Error
-from threading import Lock
 
 from datalibrary.s3Client import minio_client as client
+
+Image.MAX_IMAGE_PIXELS = 10_000_000_000  # 10 billion
 
 
 def json_empty(item):
@@ -91,13 +90,13 @@ def class_to_index(class_map: dict):
     color_to_index = {}
     if len(class_map) == 2:
         for class_ in class_map:
-            findall = re.findall(r'[(](.*?)[)]', class_map[class_])
-            color_to_index[eval('(' + findall[0] + ')')[0]] = index
+            findall = re.findall(r"[(](.*?)[)]", class_map[class_])
+            color_to_index[eval("(" + findall[0] + ")")[0]] = index
             index = index + 1
     else:
         for class_ in class_map:
-            findall = re.findall(r'[(](.*?)[)]', class_map[class_])
-            color_to_index[eval('(' + findall[0] + ')')] = index
+            findall = re.findall(r"[(](.*?)[)]", class_map[class_])
+            color_to_index[eval("(" + findall[0] + ")")] = index
             index = index + 1
     return color_to_index
 
@@ -118,9 +117,11 @@ def label_to_index_image(label, color_to_index):
     index_mat = np.zeros((height, width), dtype=np.uint)
     for rgb_value, class_id in color_to_index.items():
         r_, g_, b_ = rgb_value
-        mask_int = (label[:, :, 0] == r_).astype(int) + \
-                   (label[:, :, 1] == g_).astype(int) + \
-                   (label[:, :, 2] == b_).astype(int)
+        mask_int = (
+            (label[:, :, 0] == r_).astype(int)
+            + (label[:, :, 1] == g_).astype(int)
+            + (label[:, :, 2] == b_).astype(int)
+        )
         mask = mask_int == 3
         index_mat[mask] = class_id
     return index_mat
@@ -146,7 +147,7 @@ def gray_to_index_image(label, color_to_index):
 
 def get_label_pixel_list_(label_path):
     """
-        get pxiel value of label pixel class
+    get pixel value of label pixel class
     """
     img = Image.open(label_path)
     pixels = img.getdata()
@@ -170,12 +171,12 @@ lock = Lock()
 
 
 def get_mapping_(file):
-    # 在读取文件前获取锁
+    # Acquire lock before reading file
     lock.acquire()
     try:
-        # 检查对象是否存在
+        # Check if object exists
         stat = client.stat_object("pytdml", f"mapping/{file}_mapping.json")
-        # 如果存在则继续
+        # If it exists, continue
         if stat:
             response = client.get_object("pytdml", f"mapping/{file}_mapping.json")
             mapping_data = response.read()
@@ -183,11 +184,11 @@ def get_mapping_(file):
                 return json.load(BytesIO(mapping_data))
 
     except json.JSONDecodeError as e:
-        print(f"JSON解析错误: {e}")
+        print(f"JSON parsing error: {e}")
     except S3Error as e:
-        print(f"MinIO S3错误: {e}")
+        print(f"MinIO S3 error: {e}")
     except Exception as e:
-        print(f"发生其他错误: {e}")
+        print(f"Other error occurred: {e}")
     finally:
         lock.release()
     return None
@@ -199,14 +200,15 @@ name_map = None
 
 def label_class_list_(pixel_list):
     """
-        transform label pixel list to label class list
+    transform label pixel list to label class list
     """
     global pixel_map
     if pixel_map is None:
         pixel_map = get_mapping_("pixel")
     if len(pixel_list) > 0:
-
-        label_class_list = [item["type"] for item in pixel_map if int(item["pngValue"]) in pixel_list]
+        label_class_list = [
+            item["type"] for item in pixel_map if int(item["pngValue"]) in pixel_list
+        ]
         return label_class_list
     else:
         return []
@@ -214,25 +216,20 @@ def label_class_list_(pixel_list):
 
 def split_data_url(data_url):
     """
-       Splits the data URL into bucket name and object name.
+    Splits the data URL into bucket name and object name.
 
-       Args:
-           data_url (str): The data URL to split.
+    Args:
+        data_url (str): The data URL to split.
 
-       Returns:
-           tuple: The bucket name and object name.
+    Returns:
+        tuple: The bucket name and object name.
 
-       """
+    """
     bucket_name, object_name = data_url.split("/", 1)
     return bucket_name, object_name
 
 
 def object_path_parse_(object_name):
-    # bucket_name = object_name.split("/")[0]
-    # obs_dataset_name = object_name.split("/")[1]
-    # dataset_name = dataset_name_map_(obs_dataset_name)
-    # semantic_name = object_name.split("/")[2]
-    # file_name = object_name.split("/")[3]
     name_list = object_name.split("/")
     name_list[1] = dataset_name_map_(name_list[1])
     name_list.pop(0)
@@ -248,7 +245,8 @@ def generate_local_file_path(root, data_url):
 def classList_for_segmentation_(data_item, root):
     nameList = object_path_parse_(data_item.labels[0].image_url)
     label_pixel_list = get_label_pixel_list_(
-        os.path.join(root, "EOTrainingDataset", nameList[1], nameList[2], nameList[3]))
+        os.path.join(root, "EOTrainingDataset", nameList[1], nameList[2], nameList[3])
+    )
     print(label_pixel_list)
     label_class_list = label_class_list_(label_pixel_list)
 
@@ -263,7 +261,9 @@ def regenerate_png_label_(label_array: Image, cls_list):
     if pixel_map is None:
         pixel_map = get_mapping_("pixel")
 
-    pixel_list = [int(item["pngValue"]) for item in pixel_map if item["type"] in cls_list]
+    pixel_list = [
+        int(item["pngValue"]) for item in pixel_map if item["type"] in cls_list
+    ]
 
     mask = np.isin(label_array, pixel_list)
     label_array[~mask] = 0
@@ -303,8 +303,8 @@ def get_object_label_data_(label, img_width, img_height):
 
 
 def generate_new_tdml(dataset, classes):
-    new_id = '_'.join([ds.id for ds in dataset])
-    new_name = '&'.join([ds.name for ds in dataset])
+    new_id = "_".join([ds.id for ds in dataset])
+    new_name = "&".join([ds.name for ds in dataset])
     new_description = "samples of " + str(classes) + " from datasets: " + new_name
     new_image_size = list(set([ds.image_size for ds in dataset]))
     new_bands = list(set([elem for ds in dataset for elem in ds.bands]))
@@ -314,7 +314,9 @@ def generate_new_tdml(dataset, classes):
 def datasets_list(dataset_descriptions, task_type, cls_list):
     if task_type is None:
         return dataset_descriptions
-    dataset_list = list(filter(lambda item: item['task'] == task_type, dataset_descriptions))
+    dataset_list = list(
+        filter(lambda item: item["task"] == task_type, dataset_descriptions)
+    )
     if cls_list is None:
         return dataset_list
     return [item for item in dataset_list if set(cls_list).issubset(item["classes"])]
@@ -326,7 +328,13 @@ class LibraryNotInstalledError(Exception):
 
 def check_object_path(path):
     object_item = path.split("/")
-    bucket_list = ["scene-classification", "object-detection", "land-cover", "change-detection", "3d-construction"]
+    bucket_list = [
+        "scene-classification",
+        "object-detection",
+        "land-cover",
+        "change-detection",
+        "3d-construction",
+    ]
     if len(object_item) == 4 and object_item[0] in bucket_list:
         return True
     return False
@@ -345,20 +353,20 @@ def transform_annotation(labels, class_map, img_width, img_height):
 
 def generate_cache_file_path(root, name, crop=None):
     """
-        Generates a cache file path based on the given name and crop parameters.
+    Generates a cache file path based on the given name and crop parameters.
 
-        Args:
-            name (str): The base name for the cache file.
-            crop (tuple or None): The crop parameters.
-            root (str): The root directory.
+    Args:
+        name (str): The base name for the cache file.
+        crop (tuple or None): The crop parameters.
+        root (str): The root directory.
 
-        Returns:
-            str: The generated cache file path.
+    Returns:
+        str: The generated cache file path.
 
-        """
+    """
     cache_name = name + ".pkl"
     if crop is not None:
-        crop_str = '_'.join(str(i) for i in crop)
+        crop_str = "_".join(str(i) for i in crop)
         cache_name = name + "_" + crop_str + ".pkl"
     cache_file_path = os.path.join(root, "EOTrainingDataset", ".cache", cache_name)
     if not os.path.exists(os.path.dirname(cache_file_path)):
@@ -367,7 +375,13 @@ def generate_cache_file_path(root, name, crop=None):
 
 
 def target_to_dict(labels, class_map, img_width, img_height):
-    target_dict = {"bbox": [], "class": [], "bboxType": [], "isDifficultlyDetectable": [], "isNegative": []}
+    target_dict = {
+        "bbox": [],
+        "class": [],
+        "bboxType": [],
+        "isDifficultlyDetectable": [],
+        "isNegative": [],
+    }
     for label in labels:
         normalized_target = get_object_label_data_(label, img_width, img_height)
         target_dict["bbox"].append(normalized_target)
@@ -376,7 +390,9 @@ def target_to_dict(labels, class_map, img_width, img_height):
             target_dict["class"].append(torch.tensor(-1))
         else:
             if label.label_class in class_map:
-                target_dict["class"].append((torch.tensor(class_map[label.label_class], dtype=torch.int64)))
+                target_dict["class"].append(
+                    (torch.tensor(class_map[label.label_class], dtype=torch.int64))
+                )
         target_dict["bboxType"].append(label.bbox_type)
         target_dict["isNegative"].append(label.is_negative)
     target_dict["bbox"] = torch.tensor(target_dict["bbox"])
@@ -393,13 +409,13 @@ def cache_dump(cache_file_path, root, td_list):
 
 def load_cached_training_data(cache_file_path):
     """
-        Loads cached training data from the specified cache file.
+    Loads cached training data from the specified cache file.
 
-        Args:
-            cache_file_path (str): The path to the cache file.
+    Args:
+        cache_file_path (str): The path to the cache file.
 
-        Returns:
-            list: The loaded training data list.
+    Returns:
+        list: The loaded training data list.
 
     """
     td_list = []
@@ -415,7 +431,7 @@ def channel_processing(img):
     # single band check
     if channel == 1:
         img = convert_grey_to_rgb_(img)
-    # TODO: 通道数处理
+    # TODO: Channel processing
     if channel > 3:
         img = img[:, :, :3]
     return img
@@ -441,8 +457,7 @@ def image_open(data):
 
     try:
         with Image.open(data) as img:
-
-            if img.mode == '1':  # Handling the case of bit depth of 1
+            if img.mode == "1":  # Handling the case of bit depth of 1
                 img = img.convert("L")
             np_img = np.array(img, dtype=np.float64).copy()
 
@@ -454,7 +469,9 @@ def image_open(data):
         try:
             import rasterio
         except ModuleNotFoundError:
-            raise LibraryNotInstalledError("failed to import rasterio, please install the library first")
+            raise LibraryNotInstalledError(
+                "failed to import rasterio, please install the library first"
+            )
         if isinstance(data, str):
             pass
         elif isinstance(data, urllib3.response.HTTPResponse):
@@ -465,10 +482,12 @@ def image_open(data):
             with rasterio.open(data) as image:
                 img = image.read().copy()
             return img
-        except (rasterio.errors.RasterioIOError, Exception) as e:
-            raise ValueError("Failed to read image with both PIL and rasterio libraries. "
-                             "Please ensure you have downloaded the dataset correctly "
-                             "or check the file path or URL.")
+        except (rasterio.errors.RasterioIOError, Exception):
+            raise ValueError(
+                "Failed to read image with both PIL and rasterio libraries. "
+                "Please ensure you have downloaded the dataset correctly "
+                "or check the file path or URL."
+            )
 
 
 def save_cache(cache_path, cache_file_list):
@@ -481,18 +500,18 @@ def save_cache(cache_path, cache_file_list):
 
 def parse_s3_path(s3_path):
     # Match and extract the bucket and key using regular expressions
-    pattern = r'^s3://([^/]+)/(.+)$'
+    pattern = r"^s3://([^/]+)/(.+)$"
     match = re.match(pattern, s3_path)
     if match:
         bucket_name = match.group(1)
         key = match.group(2)
         return bucket_name, key
     else:
-        raise ValueError('Invalid S3 path')
+        raise ValueError("Invalid S3 path")
 
 
 def is_s3_path(path):
-    pattern = r'^s3://.+/.+$'
+    pattern = r"^s3://.+/.+$"
     return re.match(pattern, path) is not None
 
 
@@ -509,22 +528,29 @@ import copy
 def split_data(dataset, split_type=None, split_ratio=None):
     td_data = dataset.data
     if split_type and split_ratio:
-        raise ValueError("Only one of 'split_type' or 'split_ratio' should be provided.")
+        raise ValueError(
+            "Only one of 'split_type' or 'split_ratio' should be provided."
+        )
 
     if split_type:
-        if split_type == 'training':
-
+        if split_type == "training":
             td_data = [data for data in td_data if data.trainingType == "training"]
             if len(td_data) == 0:
-                raise ValueError("The original dataset training type record is missing, please use ratio division.")
-        elif split_type == 'validation':
+                raise ValueError(
+                    "The original dataset training type record is missing, please use ratio division."
+                )
+        elif split_type == "validation":
             td_data = [data for data in td_data if data.trainingType == "validation"]
             if len(td_data) == 0:
-                raise ValueError("The original dataset training type record is missing, please use ratio division.")
-        elif split_type == 'test':
+                raise ValueError(
+                    "The original dataset training type record is missing, please use ratio division."
+                )
+        elif split_type == "test":
             td_data = [data for data in td_data if data.trainingType == "test"]
             if len(td_data) == 0:
-                raise ValueError("The original dataset training type record is missing, please use ratio division.")
+                raise ValueError(
+                    "The original dataset training type record is missing, please use ratio division."
+                )
         else:
             raise ValueError("Invalid value for 'split_type'.")
         dataset.data = td_data
@@ -532,8 +558,10 @@ def split_data(dataset, split_type=None, split_ratio=None):
 
     if split_ratio:
         # assert split_ratio[0] + split_ratio[1] + split_ratio[2] == 1.0
-        tolerance = 1e-6  # 例如，可以使用 0.000001 作为容差值
-        assert abs(sum(split_ratio) - 1.0) <= tolerance, "The sum of the split ratios must equal 1.0"
+        tolerance = 1e-6  # For example, you can use 0.000001 as the tolerance value
+        assert (
+            abs(sum(split_ratio) - 1.0) <= tolerance
+        ), "The sum of the split ratios must equal 1.0"
         total_count = len(td_data)
         train_count = int(split_ratio[0] * total_count)
 
@@ -544,13 +572,13 @@ def split_data(dataset, split_type=None, split_ratio=None):
             raise ValueError("Split ratios should be non-negative and sum up to 1.")
 
         shuffled_data = random.sample(td_data, total_count)
-        # 划分数据集
+        # Split the dataset
         train_set = shuffled_data[:train_count]
-        valid_set = shuffled_data[train_count:train_count + validation_count]
-        test_set = shuffled_data[train_count + validation_count:]
+        valid_set = shuffled_data[train_count : train_count + validation_count]
+        test_set = shuffled_data[train_count + validation_count :]
 
-        # 返回划分后的三个数据集
-        # 创建dataset对象的深拷贝并分配数据
+        # Return the three split datasets
+        # Create deep copies of the dataset object and assign data
         train_dataset = copy.deepcopy(dataset)
         train_dataset.data = train_set
         valid_dataset = copy.deepcopy(dataset)
